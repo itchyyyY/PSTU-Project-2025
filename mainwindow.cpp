@@ -1,22 +1,20 @@
 #include "mainwindow.h"
 #include <codeeditor.h>
 #include "TestCreationDialog.h"
-#include "inputdialog.h"
-#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QProcess>
-#include <QTemporaryFile>
+#include <QFileDialog>
 #include <QDir>
 #include <QTextStream>
 #include <QMessageBox>
 #include <QSplitter>
-#include <QFileDialog>
+#include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <QLabel>
+#include <QTemporaryFile>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -40,23 +38,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     layout->addLayout(buttonLayout);
 
-    auto *splitter = new QSplitter(Qt::Vertical, this);
-
     codeEditor = new CodeEditor(this);
     codeEditor->setPlaceholderText("// Enter your C++ code here");
 
-    outputViewer = new CodeEditor(this);
-    outputViewer->setReadOnly(true);
-
-    splitter->addWidget(codeEditor);
-    splitter->addWidget(outputViewer);
-
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 1);
-    splitter->setCollapsible(0, false);
-    splitter->setCollapsible(1, false);
-
-    layout->addWidget(splitter);
+    layout->addWidget(codeEditor);
 
     connect(compileButton, &QPushButton::clicked, this, &MainWindow::compileAndRun);
     connect(runWithTestButton, &QPushButton::clicked, this, &MainWindow::compileAndRunWithTest);
@@ -121,19 +106,19 @@ MainWindow::~MainWindow() = default;
 void MainWindow::compileAndRun() {
     QString code = codeEditor->toPlainText();
 
-    QString tempDir = "C:/Temp";
-    QDir dir(tempDir);
-    if (!dir.exists()) {
-        dir.mkpath(tempDir);
-    }
+    QString sourcePath = QFileDialog::getSaveFileName(
+        this, "Сохранить C++ файл",
+        QDir::homePath() + "/program.cpp",
+        "C++ файлы (*.cpp)");
 
-    QString basePath = tempDir + "/qt_temp_code";
-    QString sourcePath = basePath + ".cpp";
-    QString executablePath = basePath + ".exe";
+    if (sourcePath.isEmpty()) return;
+
+    if (!sourcePath.endsWith(".cpp"))
+        sourcePath += ".cpp";
 
     QFile sourceFile(sourcePath);
     if (!sourceFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, "Error", "Failed to create source file.");
+        QMessageBox::critical(this, "Ошибка", "Не удалось сохранить исходный файл.");
         return;
     }
 
@@ -141,63 +126,56 @@ void MainWindow::compileAndRun() {
     out << code;
     sourceFile.close();
 
+    QString exePath = sourcePath;
+    exePath.chop(4);
+
+#ifdef Q_OS_WIN
+    exePath += ".exe";
+#endif
+
     QProcess compiler;
-    compiler.start("g++", {sourcePath, "-o", executablePath});
-    compiler.waitForFinished();
+    compiler.setProgram("g++");
+    compiler.setArguments({sourcePath, "-o", exePath});
+    compiler.setProcessChannelMode(QProcess::MergedChannels);
+    compiler.start();
 
-    QString compileErrors = compiler.readAllStandardError();
-    if (!compileErrors.isEmpty()) {
-        outputViewer->setPlainText("Compilation errors:\n" + compileErrors);
+    if (!compiler.waitForFinished()) {
+        QMessageBox::critical(this, "Ошибка", "Процесс компиляции завис или не завершился.");
         return;
     }
 
-    if (!QFile::exists(executablePath)) {
-        outputViewer->setPlainText("Executable file was not created.");
+    QString compilerOutput = compiler.readAll();
+    if (compiler.exitCode() != 0) {
+        QMessageBox::critical(this, "Ошибка компиляции",
+                              compilerOutput.isEmpty() ? "Неизвестная ошибка компиляции." : compilerOutput);
         return;
     }
 
-    // Проверяем наличие cin в коде
-    if (code.contains("cin", Qt::CaseInsensitive)) {
-        InputDialog inputDialog(this);
-        if (inputDialog.exec() == QDialog::Accepted) {
-            QString userInput = inputDialog.getInput();
-
-            QProcess program;
-            program.setProcessChannelMode(QProcess::MergedChannels);
-            program.start(executablePath);
-
-            if (!program.waitForStarted()) {
-                outputViewer->setPlainText("Failed to start program.");
-                return;
-            }
-
-            program.write(userInput.toUtf8());
-            program.closeWriteChannel();
-            program.waitForFinished();
-
-            QString output = program.readAllStandardOutput();
-            outputViewer->setPlainText("Execution result:\n" + output);
-        }
-    } else {
-        QProcess program;
-        program.setProcessChannelMode(QProcess::MergedChannels);
-        program.start(executablePath);
-
-        if (!program.waitForStarted()) {
-            outputViewer->setPlainText("Failed to start program.");
-            return;
-        }
-
-        program.waitForFinished();
-
-        QString output = program.readAllStandardOutput();
-        outputViewer->setPlainText("Execution result:\n" + output);
+    if (!QFile::exists(exePath)) {
+        QMessageBox::critical(this, "Ошибка", "Файл .exe не найден после компиляции.");
+        return;
     }
+
+    QString nativeExePath = QDir::toNativeSeparators(exePath);
+
+#ifdef Q_OS_WIN
+    QString command = "cmd";
+    QStringList args;
+    args << "/C" << "start" << "cmd" << "/K" << nativeExePath;
+
+    if (!QProcess::startDetached(command, args)) {
+        QMessageBox::critical(this, "Ошибка", "Не удалось запустить исполняемый файл в консоли.");
+    }
+#endif
 }
 
 
 void MainWindow::compileAndRunWithTest() {
-    QString testFilePath = QFileDialog::getOpenFileName(this, "Select Test", QCoreApplication::applicationDirPath() + "/tests", "JSON Files (*.json)");
+    QString testFilePath = QFileDialog::getOpenFileName(
+        this, "Select Test",
+        QCoreApplication::applicationDirPath() + "/tests",
+        "JSON Files (*.json)");
+
     if (testFilePath.isEmpty()) return;
 
     QFile testFile(testFilePath);
@@ -209,14 +187,13 @@ void MainWindow::compileAndRunWithTest() {
     QJsonDocument testDoc = QJsonDocument::fromJson(testFile.readAll());
     QJsonObject testObj = testDoc.object();
     QJsonArray forbidden = testObj["forbidden"].toArray();
-    QString inputData = testObj["input"].toString();
-    QString expectedOutput = testObj["expected_output"].toString().trimmed();
 
     QString code = codeEditor->toPlainText();
     for (const QJsonValue &val : forbidden) {
         QString item = val.toString().trimmed();
         if (code.contains(item)) {
-            outputViewer->setPlainText("Test failed: usage of forbidden element '" + item + "'");
+            QMessageBox::critical(this, "Test Failed",
+                                  "Usage of forbidden element: '" + item + "'");
             return;
         }
     }
@@ -229,37 +206,49 @@ void MainWindow::compileAndRunWithTest() {
 
     QTextStream out(&sourceFile);
     out << code;
-    out.flush();
+    sourceFile.close();
+
     QString sourcePath = sourceFile.fileName();
-    QString executablePath = sourcePath + ".exe";
+    QString exePath = sourcePath.left(sourcePath.lastIndexOf('.')) + ".exe";
 
     QProcess compiler;
-    compiler.start("g++", {sourcePath, "-o", executablePath});
-    compiler.waitForFinished();
+    compiler.setProgram("g++");
+    compiler.setArguments({sourcePath, "-o", exePath});
+    compiler.setProcessChannelMode(QProcess::MergedChannels);
+    compiler.start();
 
-    QString compileErrors = compiler.readAllStandardError();
-    if (!compileErrors.isEmpty()) {
-        outputViewer->setPlainText("Compilation errors:\n" + compileErrors);
+    if (!compiler.waitForFinished()) {
+        QMessageBox::critical(this, "Error", "Compilation process hanged or didn't finish.");
+        return;
+    }
+
+    QString compilerOutput = compiler.readAll();
+    if (compiler.exitCode() != 0) {
+        QMessageBox::critical(this, "Compilation Error",
+                              compilerOutput.isEmpty() ? "Unknown compilation error." : compilerOutput);
+        return;
+    }
+
+    if (!QFile::exists(exePath)) {
+        QMessageBox::critical(this, "Error", "Executable file not found after compilation.");
         return;
     }
 
     QProcess program;
-    program.setProcessChannelMode(QProcess::MergedChannels);
-    program.start(executablePath);
+    program.start(exePath);
     if (!program.waitForStarted()) {
-        outputViewer->setPlainText("Failed to start program.");
+        QMessageBox::critical(this, "Error", "Failed to start program.");
         return;
     }
 
-    program.write(inputData.toUtf8());
     program.closeWriteChannel();
     program.waitForFinished();
 
-    QString actualOutput = program.readAllStandardOutput().trimmed();
-
-    if (actualOutput == expectedOutput) {
-        outputViewer->setPlainText("Test passed!\nOutput:\n" + actualOutput);
-    } else {
-        outputViewer->setPlainText("Test failed!\nExpected:\n" + expectedOutput + "\n\nActual:\n" + actualOutput);
-    }
+    QString nativeExePath = QDir::toNativeSeparators(exePath);
+#ifdef Q_OS_WIN
+    QString command = "cmd";
+    QStringList args;
+    args << "/C" << "start" << "cmd" << "/K" << nativeExePath;
+    QProcess::startDetached(command, args);
+#endif
 }

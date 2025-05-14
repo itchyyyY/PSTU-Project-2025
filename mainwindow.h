@@ -19,7 +19,6 @@ private slots:
 
 private:
     QPlainTextEdit *codeEditor;
-    QPlainTextEdit *outputViewer;
 };
 
 #endif // MAINWINDOW_H
