@@ -17,6 +17,8 @@ private:
     QLineEdit *nameEdit;
     QTextEdit *descriptionEdit;
     QLineEdit *forbiddenEdit;
+    QTextEdit *inputEdit;
+    QTextEdit *expectedOutputEdit;
 
     QString existingFilePath;
 

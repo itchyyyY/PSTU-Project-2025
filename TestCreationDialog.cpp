@@ -21,6 +21,8 @@ TestCreationDialog::TestCreationDialog(QWidget *parent)
     nameEdit = new QLineEdit(this);
     descriptionEdit = new QTextEdit(this);
     forbiddenEdit = new QLineEdit(this);
+    inputEdit = new QTextEdit(this);
+    expectedOutputEdit = new QTextEdit(this);
 
     layout->addWidget(new QLabel("Test name:"));
     layout->addWidget(nameEdit);
@@ -30,6 +32,12 @@ TestCreationDialog::TestCreationDialog(QWidget *parent)
 
     layout->addWidget(new QLabel("Prohibited elements (separated by commas):"));
     layout->addWidget(forbiddenEdit);
+
+    layout->addWidget(new QLabel("Expected input:"));
+    layout->addWidget(inputEdit);
+
+    layout->addWidget(new QLabel("Expected output:"));
+    layout->addWidget(expectedOutputEdit);
 
     auto *button = new QPushButton("Save", this);
     layout->addWidget(button);
@@ -67,6 +75,9 @@ void TestCreationDialog::loadTestFromFile(const QString &filePath) {
     }
     forbiddenEdit->setText(forbiddenList.join(", "));
 
+    inputEdit->setPlainText(obj["input"].toString());
+    expectedOutputEdit->setPlainText(obj["expected"].toString());
+
     file.close();
 }
 
@@ -74,6 +85,8 @@ void TestCreationDialog::loadTestFromFile(const QString &filePath) {
 void TestCreationDialog::onCreateClicked() {
     QString name = nameEdit->text().trimmed();
     QString desc = descriptionEdit->toPlainText().trimmed();
+    QString input = inputEdit->toPlainText().trimmed();
+    QString expected = expectedOutputEdit->toPlainText().trimmed();
     QStringList forbiddenList = forbiddenEdit->text().split(",", Qt::SkipEmptyParts);
 
     if (name.isEmpty()) {
@@ -84,6 +97,8 @@ void TestCreationDialog::onCreateClicked() {
     QJsonObject testJson;
     testJson["name"] = name;
     testJson["description"] = desc;
+    testJson["input"] = input;
+    testJson["expected"] = expected;
 
     QJsonArray forbiddenArray;
     for (const QString &item : forbiddenList)
