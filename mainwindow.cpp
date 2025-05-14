@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include <codeeditor.h>
 #include "TestCreationDialog.h"
+#include "inputdialog.h"
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -120,17 +121,25 @@ MainWindow::~MainWindow() = default;
 void MainWindow::compileAndRun() {
     QString code = codeEditor->toPlainText();
 
-    QTemporaryFile sourceFile(QDir::tempPath() + "/temp_code_XXXXXX.cpp");
-    if (!sourceFile.open()) {
-        QMessageBox::critical(this, "Error", "Failed to create temporary source file.");
+    QString tempDir = "C:/Temp";
+    QDir dir(tempDir);
+    if (!dir.exists()) {
+        dir.mkpath(tempDir);
+    }
+
+    QString basePath = tempDir + "/qt_temp_code";
+    QString sourcePath = basePath + ".cpp";
+    QString executablePath = basePath + ".exe";
+
+    QFile sourceFile(sourcePath);
+    if (!sourceFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Error", "Failed to create source file.");
         return;
     }
 
     QTextStream out(&sourceFile);
     out << code;
-    out.flush();
-    QString sourcePath = sourceFile.fileName();
-    QString executablePath = sourcePath + ".exe";
+    sourceFile.close();
 
     QProcess compiler;
     compiler.start("g++", {sourcePath, "-o", executablePath});
@@ -142,16 +151,48 @@ void MainWindow::compileAndRun() {
         return;
     }
 
-    QProcess program;
-    program.setProcessChannelMode(QProcess::MergedChannels);
-    program.start(executablePath);
-    if (!program.waitForFinished()) {
-        outputViewer->setPlainText("Failed to run program.");
+    if (!QFile::exists(executablePath)) {
+        outputViewer->setPlainText("Executable file was not created.");
         return;
     }
 
-    QString output = program.readAllStandardOutput();
-    outputViewer->setPlainText("Execution result:\n" + output);
+    // Проверяем наличие cin в коде
+    if (code.contains("cin", Qt::CaseInsensitive)) {
+        InputDialog inputDialog(this);
+        if (inputDialog.exec() == QDialog::Accepted) {
+            QString userInput = inputDialog.getInput();
+
+            QProcess program;
+            program.setProcessChannelMode(QProcess::MergedChannels);
+            program.start(executablePath);
+
+            if (!program.waitForStarted()) {
+                outputViewer->setPlainText("Failed to start program.");
+                return;
+            }
+
+            program.write(userInput.toUtf8());
+            program.closeWriteChannel();
+            program.waitForFinished();
+
+            QString output = program.readAllStandardOutput();
+            outputViewer->setPlainText("Execution result:\n" + output);
+        }
+    } else {
+        QProcess program;
+        program.setProcessChannelMode(QProcess::MergedChannels);
+        program.start(executablePath);
+
+        if (!program.waitForStarted()) {
+            outputViewer->setPlainText("Failed to start program.");
+            return;
+        }
+
+        program.waitForFinished();
+
+        QString output = program.readAllStandardOutput();
+        outputViewer->setPlainText("Execution result:\n" + output);
+    }
 }
 
 
