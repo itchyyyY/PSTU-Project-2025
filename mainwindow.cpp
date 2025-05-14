@@ -10,6 +10,7 @@
 #include <QTextStream>
 #include <QMessageBox>
 #include <QSplitter>
+#include <QGroupBox>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -20,28 +21,38 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     auto *centralWidget = new QWidget(this);
-    auto *layout = new QVBoxLayout(centralWidget);
+    auto *mainLayout = new QVBoxLayout(centralWidget);
 
-    auto *buttonLayout = new QHBoxLayout();
+    auto *testGroupBox = new QGroupBox("Test Management", this);
+    auto *testButtonLayout = new QHBoxLayout();
 
-    auto *createTestButton = new QPushButton("Create test", this);
+    auto *createTestButton = new QPushButton("Create Test", this);
+    auto *editTestButton = new QPushButton("Edit Test", this);
+    auto *showTestInfoButton = new QPushButton("Show Test Info", this);
+    auto *deleteTestButton = new QPushButton("Delete Test", this);
+
+    testButtonLayout->addWidget(createTestButton);
+    testButtonLayout->addWidget(editTestButton);
+    testButtonLayout->addWidget(showTestInfoButton);
+    testButtonLayout->addWidget(deleteTestButton);
+    testGroupBox->setLayout(testButtonLayout);
+
+    auto *runGroupBox = new QGroupBox("Execution", this);
+    auto *runButtonLayout = new QHBoxLayout();
+
     auto *compileButton = new QPushButton("Compile and Run", this);
     auto *runWithTestButton = new QPushButton("Compile and Run with Test", this);
-    auto *editTestButton = new QPushButton("Edit test", this);
-    auto *deleteTestButton = new QPushButton("Delete test", this);
 
-    buttonLayout->addWidget(createTestButton);
-    buttonLayout->addWidget(editTestButton);
-    buttonLayout->addWidget(deleteTestButton);
-    buttonLayout->addWidget(compileButton);
-    buttonLayout->addWidget(runWithTestButton);
+    runButtonLayout->addWidget(compileButton);
+    runButtonLayout->addWidget(runWithTestButton);
+    runGroupBox->setLayout(runButtonLayout);
 
-    layout->addLayout(buttonLayout);
+    mainLayout->addWidget(testGroupBox);
+    mainLayout->addWidget(runGroupBox);
 
     codeEditor = new CodeEditor(this);
     codeEditor->setPlaceholderText("// Enter your C++ code here");
-
-    layout->addWidget(codeEditor);
+    mainLayout->addWidget(codeEditor);
 
     connect(compileButton, &QPushButton::clicked, this, &MainWindow::compileAndRun);
     connect(runWithTestButton, &QPushButton::clicked, this, &MainWindow::compileAndRunWithTest);
@@ -90,6 +101,44 @@ MainWindow::MainWindow(QWidget *parent)
                 } else {
                     QMessageBox::critical(this, "Error", "Failed to delete test.");
                 }
+            }
+        }
+    });
+
+    connect(showTestInfoButton, &QPushButton::clicked, this, [this] {
+        QString testFilePath = QFileDialog::getOpenFileName(
+            this,
+            "Select Test to View Info",
+            QCoreApplication::applicationDirPath() + "/tests",
+            "JSON Files (*.json)"
+            );
+
+        if(!testFilePath.isEmpty()) {
+            QFile file(testFilePath);
+            if(!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QMessageBox::critical(this, "Error", "Failed to open test file.");
+                return;
+            }
+
+            QByteArray data = file.readAll();
+            file.close();
+
+            QJsonParseError parseError;
+            QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+
+            if(parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+                QMessageBox::critical(this, "Error", "Invalid JSON format.");
+                return;
+            }
+
+            QJsonObject obj = doc.object();
+            QString description = obj.value("description").toString();
+
+            if(description.isEmpty()) {
+                QMessageBox::information(this, "Test Info", "No description found in this test.");
+            }
+            else {
+                QMessageBox::information(this, "Test Info", description);
             }
         }
     });
@@ -243,6 +292,8 @@ void MainWindow::compileAndRunWithTest() {
 
     program.closeWriteChannel();
     program.waitForFinished();
+
+    QMessageBox::information(this, "Test Passed", "The test was passed successfully.");
 
     QString nativeExePath = QDir::toNativeSeparators(exePath);
 #ifdef Q_OS_WIN
