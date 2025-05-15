@@ -1,8 +1,8 @@
 QT += widgets
-SOURCES += main.cpp \
-           TestCreationDialog.cpp \
-           codeeditor.cpp \
-           mainwindow.cpp
-HEADERS += mainwindow.h \
-           TestCreationDialog.h \
-           codeeditor.h \
+SOURCES += src/main.cpp \
+           src/TestCreationDialog.cpp \
+           src/codeeditor.cpp \
+           src/mainwindow.cpp
+HEADERS += include/mainwindow.h \
+           include/TestCreationDialog.h \
+           include/codeeditor.h \
