@@ -1,8 +1,12 @@
 QT += widgets
+
+INCLUDEPATH += src
+INCLUDEPATH += inc
+
 SOURCES += src/main.cpp \
            src/TestCreationDialog.cpp \
            src/codeeditor.cpp \
            src/mainwindow.cpp
-HEADERS += include/mainwindow.h \
-           include/TestCreationDialog.h \
-           include/codeeditor.h \
+HEADERS += inc/mainwindow.h \
+           inc/TestCreationDialog.h \
+           inc/codeeditor.h \
