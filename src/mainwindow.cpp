@@ -1,22 +1,24 @@
 #include "mainwindow.h"
 #include <codeeditor.h>
 #include "TestCreationDialog.h"
+
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QProcess>
 #include <QFileDialog>
 #include <QDir>
-#include <QTextStream>
 #include <QMessageBox>
-#include <QSplitter>
 #include <QGroupBox>
 #include <QFile>
+#include <QStandardPaths>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <QTemporaryFile>
 #include <QThread>
+#include <QTimer>
+#include <QElapsedTimer>
+#include <windows.h>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -153,188 +155,229 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow() = default;
 
 
-void MainWindow::compileAndRun() {
+void MainWindow::compileAndRun()
+{
     QString code = codeEditor->toPlainText();
-
-    QString sourcePath = QFileDialog::getSaveFileName(
-        this, "Сохранить C++ файл",
-        QDir::homePath() + "/program.cpp",
-        "C++ файлы (*.cpp)");
-
-    if (sourcePath.isEmpty()) return;
-
-    if (!sourcePath.endsWith(".cpp"))
-        sourcePath += ".cpp";
-
-    QFile sourceFile(sourcePath);
-    if (!sourceFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, "Ошибка", "Не удалось сохранить исходный файл.");
+    if (code.trimmed().isEmpty()) {
+        QMessageBox::warning(this, "Empty code", "Please enter code before running.");
         return;
     }
 
-    QTextStream out(&sourceFile);
+    QString cppFile = QFileDialog::getSaveFileName(
+        this,
+        "Save C++ File",
+        QDir::homePath() + "/main.cpp",
+        "C++ Files (*.cpp)"
+        );
+
+    if (cppFile.isEmpty()) {
+        return;
+    }
+
+    QFile file(cppFile);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Error", "Failed to save file.");
+        return;
+    }
+
+    QTextStream out(&file);
     out << code;
-    sourceFile.close();
+    file.close();
 
-    QString exePath = sourcePath;
-    exePath.chop(4);
+    QFileInfo fileInfo(cppFile);
+    QString folderPath = fileInfo.path();
+    QString exeFile = fileInfo.dir().filePath(fileInfo.baseName() + ".exe");
 
-#ifdef Q_OS_WIN
-    exePath += ".exe";
-#endif
+    QProcess compileProcess;
+    compileProcess.setWorkingDirectory(folderPath);
+    compileProcess.start("g++", QStringList() << cppFile << "-o" << exeFile);
 
-    QProcess compiler;
-    compiler.setProgram("g++");
-    compiler.setArguments({sourcePath, "-o", exePath});
-    compiler.setProcessChannelMode(QProcess::MergedChannels);
-    compiler.start();
-
-    if (!compiler.waitForFinished()) {
-        QMessageBox::critical(this, "Ошибка", "Процесс компиляции завис или не завершился.");
+    if (!compileProcess.waitForFinished(10000)) {
+        QMessageBox::warning(
+            this,
+            "Compilation Error",
+            "Compilation did not finish in time.\n" + compileProcess.readAllStandardError()
+            );
         return;
     }
 
-    QString compilerOutput = compiler.readAll();
-    if (compiler.exitCode() != 0) {
-        QMessageBox::critical(this, "Ошибка компиляции",
-                              compilerOutput.isEmpty() ? "Неизвестная ошибка компиляции." : compilerOutput);
+    QString compileErrors = compileProcess.readAllStandardError();
+    if (!compileErrors.isEmpty()) {
+        QMessageBox::warning(this, "Compilation Error", compileErrors);
         return;
     }
 
-    if (!QFile::exists(exePath)) {
-        QMessageBox::critical(this, "Ошибка", "Файл .exe не найден после компиляции.");
+    if (!QFile::exists(exeFile)) {
+        QMessageBox::warning(
+            this,
+            "Error",
+            "File " + exeFile + " was not created!"
+            );
         return;
     }
 
-    QString nativeExePath = QDir::toNativeSeparators(exePath);
+    QString command = QString(
+                          "cd /d \"%1\" && "
+                          "\"%2\" && "
+                          "echo Press Enter to close console... && "
+                          "pause > nul && "
+                          "exit"
+                          ).arg(folderPath, exeFile);
 
-#ifdef Q_OS_WIN
-    QString command = "cmd";
-    QStringList args;
-    args << "/C" << "start" << "cmd" << "/K" << nativeExePath;
-
-    if (!QProcess::startDetached(command, args)) {
-        QMessageBox::critical(this, "Ошибка", "Не удалось запустить исполняемый файл в консоли.");
-    }
-#endif
+    ShellExecuteA(
+        NULL,
+        "open",
+        "cmd.exe",
+        QString("/C %1").arg(command).toLocal8Bit().constData(),
+        NULL,
+        SW_SHOW
+        );
 }
 
 
 void MainWindow::compileAndRunWithTest() {
-    QString filePath = QFileDialog::getSaveFileName(this, "Save File", QDir::homePath(), "C++ Files (*.cpp)");
-    if (filePath.isEmpty()) return;
-
-    QFile saveFile(filePath);
-    if (!saveFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, "Error", "Cannot save file.");
-        return;
-    }
-    QTextStream saveStream(&saveFile);
-    saveStream << codeEditor->toPlainText();
-    saveFile.close();
-
-    QString testFilePath = QFileDialog::getOpenFileName(
-        this, "Select Test",
-        QCoreApplication::applicationDirPath() + "/tests",
-        "JSON Files (*.json)");
-
-    if (testFilePath.isEmpty()) return;
-
-    QFile testFile(testFilePath);
-    if (!testFile.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(this, "Error", "Cannot open test file.");
-        return;
-    }
-
-    QJsonDocument testDoc = QJsonDocument::fromJson(testFile.readAll());
-    QJsonObject testObj = testDoc.object();
-    QJsonArray forbidden = testObj["forbidden"].toArray();
-    QString expectedInput = testObj["input"].toString();
-    QString expectedOutput = testObj["expected"].toString();
-
     QString code = codeEditor->toPlainText();
-    for (const QJsonValue &val : forbidden) {
-        QString item = val.toString().trimmed();
-        if (code.contains(item)) {
-            QMessageBox::critical(this, "Test Failed",
-                                  "Usage of forbidden element: '" + item + "'");
+    if (code.trimmed().isEmpty()) {
+        QMessageBox::warning(this, "Пустой код", "Пожалуйста, введите код перед запуском.");
+        return;
+    }
+
+    // Сохраняем C++ файл
+    QString cppFile = QFileDialog::getSaveFileName(
+        this,
+        "Сохранить C++ файл",
+        QDir::homePath() + "/main.cpp",
+        "C++ Files (*.cpp)"
+        );
+    if (cppFile.isEmpty())
+        return;
+
+    QFile file(cppFile);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Ошибка", "Не удалось сохранить файл.");
+        return;
+    }
+
+    QTextStream out(&file);
+    out << code;
+    file.close();
+
+    // Открываем тест
+    QString testFile = QFileDialog::getOpenFileName(
+        this,
+        "Выберите файл теста",
+        QCoreApplication::applicationDirPath() + "/tests",
+        "JSON Files (*.json)"
+        );
+    if (testFile.isEmpty())
+        return;
+
+    QFile jsonFile(testFile);
+    if (!jsonFile.open(QIODevice::ReadOnly)) {
+        QMessageBox::critical(this, "Ошибка", "Не удалось открыть файл теста.");
+        return;
+    }
+
+    QJsonDocument doc = QJsonDocument::fromJson(jsonFile.readAll());
+    QJsonObject obj = doc.object();
+    QString testInput = obj["input"].toString();
+    QString expectedOutput = obj["expected"].toString().trimmed();
+    QJsonArray forbiddenArray = obj["forbidden"].toArray();
+
+    QStringList forbiddenList;
+    for (const QJsonValue &val : forbiddenArray)
+        forbiddenList << val.toString().trimmed();
+
+    jsonFile.close();
+
+    // Проверка запрещённых конструкций
+    for (const QString &keyword : forbiddenList) {
+        if (!keyword.isEmpty() && code.contains(keyword, Qt::CaseInsensitive)) {
+            QMessageBox::warning(this, "Ошибка", "Код содержит запрещённый элемент: " + keyword);
             return;
         }
     }
 
-    QTemporaryFile sourceFile(QDir::tempPath() + "/temp_code_XXXXXX.cpp");
-    if (!sourceFile.open()) {
-        QMessageBox::critical(this, "Error", "Failed to create temporary file.");
+    // Компиляция
+    QFileInfo fileInfo(cppFile);
+    QString folderPath = fileInfo.path();
+    QString exeFile = fileInfo.dir().filePath(fileInfo.baseName() + ".exe");
+
+    QProcess compileProcess;
+    compileProcess.setWorkingDirectory(folderPath);
+    compileProcess.start("g++", QStringList() << cppFile << "-o" << exeFile);
+
+    if (!compileProcess.waitForFinished(5000)) {
+        QMessageBox::warning(this, "Ошибка компиляции", compileProcess.readAllStandardError());
         return;
     }
 
-    QTextStream out(&sourceFile);
-    out << code;
-    sourceFile.close();
-
-    QString sourcePath = sourceFile.fileName();
-    QString exePath = sourcePath.left(sourcePath.lastIndexOf('.')) + ".exe";
-
-    QProcess compiler;
-    compiler.setProgram("g++");
-    compiler.setArguments({sourcePath, "-o", exePath});
-    compiler.setProcessChannelMode(QProcess::MergedChannels);
-    compiler.start();
-
-    if (!compiler.waitForFinished()) {
-        QMessageBox::critical(this, "Error", "Compilation process hanged or didn't finish.");
+    if (!QFile::exists(exeFile)) {
+        QMessageBox::warning(this, "Ошибка", "Файл " + exeFile + " не создан!");
         return;
     }
 
-    QString compilerOutput = compiler.readAll();
-    if (compiler.exitCode() != 0) {
-        QMessageBox::critical(this, "Compilation Error",
-                              compilerOutput.isEmpty() ? "Unknown compilation error." : compilerOutput);
-        return;
-    }
+    // Команда: записать вывод в файл И показать вывод пользователю
+    QString outputFilePath = folderPath + "/output.txt";
+    QString safeInput = testInput;
+    safeInput.replace("\"", "\"\""); // экранирование кавычек
 
-    if (!QFile::exists(exePath)) {
-        QMessageBox::critical(this, "Error", "Executable file not found after compilation.");
-        return;
-    }
+    QString cmd = QString(
+                      "cd /d \"%1\" && "
+                      "(echo %2 | \"%3\") > \"%4\" & "
+                      "echo %2 | \"%3\" && "
+                      "echo. && echo Нажмите Enter чтобы закрыть консоль... && pause > nul && exit"
+                      ).arg(folderPath)
+                      .arg(safeInput)
+                      .arg(exeFile)
+                      .arg(outputFilePath);
 
-    QProcess program;
-    program.setProgram(exePath);
-    program.setProcessChannelMode(QProcess::MergedChannels);
+    ShellExecuteA(
+        NULL,
+        "open",
+        "cmd.exe",
+        QString("/C %1").arg(cmd).toLocal8Bit().constData(),
+        NULL,
+        SW_SHOW
+        );
 
-    program.start();
-    if (!program.waitForStarted()) {
-        QMessageBox::critical(this, "Error", "Failed to start program.");
-        return;
-    }
+    // Чтение вывода и проверка теста (с задержкой)
+    QTimer::singleShot(500, this, [=]() mutable {
+        QElapsedTimer timer;
+        timer.start();
 
-    if (!expectedInput.isEmpty()) {
-        program.write(expectedInput.toUtf8());
-    }
-    program.closeWriteChannel();
+        while (!QFile::exists(outputFilePath)) {
+            QThread::msleep(200);
+            if (timer.elapsed() > 30000) {
+                QMessageBox::warning(this, "Таймаут", "Программа не завершилась за отведённое время.");
+                return;
+            }
+        }
 
-    if (!program.waitForFinished()) {
-        QMessageBox::critical(this, "Error", "Program did not finish execution.");
-        return;
-    }
+        QFile outFile(outputFilePath);
+        if (!outFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, "Ошибка", "Не удалось прочитать вывод.");
+            return;
+        }
 
-    QString actualOutput = QString::fromUtf8(program.readAll()).trimmed();
-    QString cleanedExpectedOutput = expectedOutput.trimmed();
+        QString actualOutput = QString::fromUtf8(outFile.readAll()).trimmed();
+        outFile.close();
+        QFile::remove(outputFilePath);
 
-    if (!cleanedExpectedOutput.isEmpty() && actualOutput != cleanedExpectedOutput) {
-        QMessageBox::critical(this, "Test Failed",
-                              "Expected output:\n" + cleanedExpectedOutput +
-                                  "\n\nActual output:\n" + actualOutput);
-        return;
-    }
+        QString resultMessage;
 
-    QMessageBox::information(this, "Test Passed", "The test was passed successfully.");
+        if (actualOutput == expectedOutput) {
+            resultMessage = "✅ Тест пройден успешно.";
+        } else {
+            resultMessage = "❌ Тест не пройден.";
+            resultMessage += "\n\n🔹 Ожидалось:\n" + expectedOutput;
+            resultMessage += "\n\n🔹 Получено:\n" + actualOutput;
+        }
 
-#ifdef Q_OS_WIN
-    QString nativeExePath = QDir::toNativeSeparators(exePath);
-    QString command = "cmd";
-    QStringList args;
-    args << "/C" << "start" << "cmd" << "/K" << nativeExePath;
-    QProcess::startDetached(command, args);
-#endif
+        if (!testInput.isEmpty() && !actualOutput.contains(testInput)) {
+            resultMessage += "\n\n⚠️ Ввод пользователя не соответствует ожиданиям теста.";
+        }
+
+        QMessageBox::information(this, "Результат теста", resultMessage);
+    });
 }

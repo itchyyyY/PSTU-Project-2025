@@ -30,97 +30,118 @@ TestCreationDialog::TestCreationDialog(QWidget *parent)
     layout->addWidget(new QLabel("Description:"));
     layout->addWidget(descriptionEdit);
 
-    layout->addWidget(new QLabel("Prohibited elements (separated by commas):"));
+    layout->addWidget(new QLabel("Forbidden constructs (comma-separated):"));
     layout->addWidget(forbiddenEdit);
 
-    layout->addWidget(new QLabel("Expected input:"));
+    layout->addWidget(new QLabel("Input:"));
     layout->addWidget(inputEdit);
 
     layout->addWidget(new QLabel("Expected output:"));
     layout->addWidget(expectedOutputEdit);
 
-    auto *button = new QPushButton("Save", this);
-    layout->addWidget(button);
+    auto *buttonLayout = new QHBoxLayout();
 
-    connect(button, &QPushButton::clicked, this, &TestCreationDialog::onCreateClicked);
+    auto *saveButton = new QPushButton("Save", this);
+    auto *cancelButton = new QPushButton("Cancel", this);
+
+    buttonLayout->addWidget(saveButton);
+    buttonLayout->addWidget(cancelButton);
+
+    layout->addLayout(buttonLayout);
+
+    connect(saveButton, &QPushButton::clicked, this, &TestCreationDialog::saveTest);
+    connect(cancelButton, &QPushButton::clicked, this, &TestCreationDialog::reject);
 }
-
 
 TestCreationDialog::TestCreationDialog(const QString &filePath, QWidget *parent)
-    : TestCreationDialog(parent)
-{
-    existingFilePath = filePath;
-    loadTestFromFile(filePath);
-    setWindowTitle("Editing test");
+    : TestCreationDialog(parent) {
+    loadTest(filePath);
 }
 
-
-void TestCreationDialog::loadTestFromFile(const QString &filePath) {
+void TestCreationDialog::loadTest(const QString &filePath) {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(this, "Error", "Unable to open test file.");
+        QMessageBox::critical(this, "Error", "Cannot open test file.");
+        reject();
         return;
     }
 
     QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    file.close();
+
+    if (!doc.isObject()) {
+        QMessageBox::critical(this, "Error", "Invalid test file format.");
+        reject();
+        return;
+    }
+
     QJsonObject obj = doc.object();
 
-    nameEdit->setText(obj["name"].toString());
-    descriptionEdit->setText(obj["description"].toString());
+    QString testName = obj.value("name").toString();
+    QString description = obj.value("description").toString();
+    QJsonArray forbiddenArray = obj.value("forbidden").toArray();
+    QString input = obj.value("input").toString();
+    QString expected = obj.value("expected").toString();
 
-    QJsonArray arr = obj["forbidden"].toArray();
+    nameEdit->setText(testName);
+    descriptionEdit->setText(description);
+
     QStringList forbiddenList;
-    for (const QJsonValue &val : arr) {
+    for (const QJsonValue &val : forbiddenArray) {
         forbiddenList << val.toString();
     }
     forbiddenEdit->setText(forbiddenList.join(", "));
 
-    inputEdit->setPlainText(obj["input"].toString());
-    expectedOutputEdit->setPlainText(obj["expected"].toString());
-
-    file.close();
+    inputEdit->setText(input);
+    expectedOutputEdit->setText(expected);
 }
 
-
-void TestCreationDialog::onCreateClicked() {
+void TestCreationDialog::saveTest() {
     QString name = nameEdit->text().trimmed();
-    QString desc = descriptionEdit->toPlainText().trimmed();
-    QString input = inputEdit->toPlainText().trimmed();
-    QString expected = expectedOutputEdit->toPlainText().trimmed();
-    QStringList forbiddenList = forbiddenEdit->text().split(",", Qt::SkipEmptyParts);
-
     if (name.isEmpty()) {
-        QMessageBox::warning(this, "Error", "Enter a test name.");
+        QMessageBox::warning(this, "Validation error", "Test name cannot be empty.");
         return;
     }
 
-    QJsonObject testJson;
-    testJson["name"] = name;
-    testJson["description"] = desc;
-    testJson["input"] = input;
-    testJson["expected"] = expected;
+    QString description = descriptionEdit->toPlainText();
+    QString forbiddenText = forbiddenEdit->text();
+    QStringList forbiddenList = forbiddenText.split(",", Qt::SkipEmptyParts);
+
+    // Trim whitespace for each forbidden construct
+    for (QString &item : forbiddenList)
+        item = item.trimmed();
+
+    QString input = inputEdit->toPlainText();
+    QString expected = expectedOutputEdit->toPlainText();
+
+    QJsonObject obj;
+    obj["name"] = name;
+    obj["description"] = description;
 
     QJsonArray forbiddenArray;
-    for (const QString &item : forbiddenList)
-        forbiddenArray.append(item.trimmed());
-    testJson["forbidden"] = forbiddenArray;
+    for (const QString &s : forbiddenList)
+        forbiddenArray.append(s);
 
-    QDir dir(QCoreApplication::applicationDirPath());
-    if (!dir.exists("tests"))
-        dir.mkdir("tests");
+    obj["forbidden"] = forbiddenArray;
+    obj["input"] = input;
+    obj["expected"] = expected;
 
-    QString pathToSave = existingFilePath.isEmpty()
-                             ? dir.filePath("tests/" + name + ".json")
-                             : existingFilePath;
+    QJsonDocument doc(obj);
 
-    QFile file(pathToSave);
+    QDir dir(QCoreApplication::applicationDirPath() + "/tests");
+    if (!dir.exists())
+        dir.mkpath(".");
+
+    QString filePath = dir.filePath(name + ".json");
+    QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly)) {
-        QMessageBox::critical(this, "Error", "Failed to create or overwrite test file.");
+        QMessageBox::critical(this, "Error", "Cannot write test file.");
         return;
     }
 
-    file.write(QJsonDocument(testJson).toJson());
+    file.write(doc.toJson(QJsonDocument::Indented));
     file.close();
 
+    QMessageBox::information(this, "Saved", "Test saved successfully.");
     accept();
 }
