@@ -26,13 +26,13 @@ MainWindow::MainWindow(QWidget *parent)
     auto *centralWidget = new QWidget(this);
     auto *mainLayout = new QVBoxLayout(centralWidget);
 
-    auto *testGroupBox = new QGroupBox("Test Management", this);
+    auto *testGroupBox = new QGroupBox("Управление тестами", this);
     auto *testButtonLayout = new QHBoxLayout();
 
-    auto *createTestButton = new QPushButton("Create Test", this);
-    auto *editTestButton = new QPushButton("Edit Test", this);
-    auto *showTestInfoButton = new QPushButton("Show Test Info", this);
-    auto *deleteTestButton = new QPushButton("Delete Test", this);
+    auto *createTestButton = new QPushButton("Создать тест", this);
+    auto *editTestButton = new QPushButton("Редактировать тест", this);
+    auto *showTestInfoButton = new QPushButton("Показать информацию", this);
+    auto *deleteTestButton = new QPushButton("Удалить тест", this);
 
     testButtonLayout->addWidget(createTestButton);
     testButtonLayout->addWidget(editTestButton);
@@ -40,11 +40,11 @@ MainWindow::MainWindow(QWidget *parent)
     testButtonLayout->addWidget(deleteTestButton);
     testGroupBox->setLayout(testButtonLayout);
 
-    auto *runGroupBox = new QGroupBox("Execution", this);
+    auto *runGroupBox = new QGroupBox("Выполнение", this);
     auto *runButtonLayout = new QHBoxLayout();
 
-    auto *compileButton = new QPushButton("Compile and Run", this);
-    auto *runWithTestButton = new QPushButton("Compile and Run with Test", this);
+    auto *compileButton = new QPushButton("Компилировать и запустить", this);
+    auto *runWithTestButton = new QPushButton("Запустить с тестом", this);
 
     runButtonLayout->addWidget(compileButton);
     runButtonLayout->addWidget(runWithTestButton);
@@ -54,7 +54,7 @@ MainWindow::MainWindow(QWidget *parent)
     mainLayout->addWidget(runGroupBox);
 
     codeEditor = new CodeEditor(this);
-    codeEditor->setPlaceholderText("// Enter your C++ code here");
+    codeEditor->setPlaceholderText("// Введите ваш C++ код здесь");
     mainLayout->addWidget(codeEditor);
 
     connect(compileButton, &QPushButton::clicked, this, &MainWindow::compileAndRun);
@@ -68,7 +68,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(editTestButton, &QPushButton::clicked, this, [this] {
         QString testFilePath = QFileDialog::getOpenFileName(
             this,
-            "Open Test to Edit",
+            "Открыть тест для редактирования",
             QCoreApplication::applicationDirPath() + "/tests",
             "JSON Files (*.json)"
             );
@@ -82,7 +82,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(deleteTestButton, &QPushButton::clicked, this, [this] {
         QString testFilePath = QFileDialog::getOpenFileName(
             this,
-            "Select Test to Delete",
+            "Выберите тест для удаления",
             QCoreApplication::applicationDirPath() + "/tests",
             "JSON Files (*.json)"
             );
@@ -93,16 +93,16 @@ MainWindow::MainWindow(QWidget *parent)
 
             QMessageBox::StandardButton reply = QMessageBox::question(
                 this,
-                "Confirm Deletion",
-                "Delete test \"" + fileName + "\"?",
+                "Подтверждение удаления",
+                "Удалить тест \"" + fileName + "\"?",
                 QMessageBox::Yes | QMessageBox::No
                 );
 
             if (reply == QMessageBox::Yes) {
                 if (QFile::remove(testFilePath)) {
-                    QMessageBox::information(this, "Success", "Test deleted.");
+                    QMessageBox::information(this, "Успех", "Тест удален.");
                 } else {
-                    QMessageBox::critical(this, "Error", "Failed to delete test.");
+                    QMessageBox::critical(this, "Ошибка", "Не удалось удалить тест.");
                 }
             }
         }
@@ -111,7 +111,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(showTestInfoButton, &QPushButton::clicked, this, [this] {
         QString testFilePath = QFileDialog::getOpenFileName(
             this,
-            "Select Test to View Info",
+            "Выберите тест для просмотра",
             QCoreApplication::applicationDirPath() + "/tests",
             "JSON Files (*.json)"
             );
@@ -119,7 +119,7 @@ MainWindow::MainWindow(QWidget *parent)
         if(!testFilePath.isEmpty()) {
             QFile file(testFilePath);
             if(!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                QMessageBox::critical(this, "Error", "Failed to open test file.");
+                QMessageBox::critical(this, "Ошибка", "Не удалось открыть файл теста.");
                 return;
             }
 
@@ -130,7 +130,7 @@ MainWindow::MainWindow(QWidget *parent)
             QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
 
             if(parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-                QMessageBox::critical(this, "Error", "Invalid JSON format.");
+                QMessageBox::critical(this, "Ошибка", "Неверный формат JSON.");
                 return;
             }
 
@@ -138,16 +138,16 @@ MainWindow::MainWindow(QWidget *parent)
             QString description = obj.value("description").toString();
 
             if(description.isEmpty()) {
-                QMessageBox::information(this, "Test Info", "No description found in this test.");
+                QMessageBox::information(this, "Информация о тесте", "Описание теста отсутствует.");
             }
             else {
-                QMessageBox::information(this, "Test Info", description);
+                QMessageBox::information(this, "Информация о тесте", description);
             }
         }
     });
 
     setCentralWidget(centralWidget);
-    setWindowTitle("Project");
+    setWindowTitle("Проект");
     resize(800, 600);
 }
 
@@ -159,13 +159,13 @@ void MainWindow::compileAndRun()
 {
     QString code = codeEditor->toPlainText();
     if (code.trimmed().isEmpty()) {
-        QMessageBox::warning(this, "Empty code", "Please enter code before running.");
+        QMessageBox::warning(this, "Пустой код", "Пожалуйста, введите код перед запуском.");
         return;
     }
 
     QString cppFile = QFileDialog::getSaveFileName(
         this,
-        "Save C++ File",
+        "Сохранить C++ файл",
         QDir::homePath() + "/main.cpp",
         "C++ Files (*.cpp)"
         );
@@ -176,7 +176,7 @@ void MainWindow::compileAndRun()
 
     QFile file(cppFile);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, "Error", "Failed to save file.");
+        QMessageBox::critical(this, "Ошибка", "Не удалось сохранить файл.");
         return;
     }
 
@@ -195,23 +195,23 @@ void MainWindow::compileAndRun()
     if (!compileProcess.waitForFinished(10000)) {
         QMessageBox::warning(
             this,
-            "Compilation Error",
-            "Compilation did not finish in time.\n" + compileProcess.readAllStandardError()
+            "Ошибка компиляции",
+            "Компиляция не завершилась вовремя.\n" + compileProcess.readAllStandardError()
             );
         return;
     }
 
     QString compileErrors = compileProcess.readAllStandardError();
     if (!compileErrors.isEmpty()) {
-        QMessageBox::warning(this, "Compilation Error", compileErrors);
+        QMessageBox::warning(this, "Ошибка компиляции", compileErrors);
         return;
     }
 
     if (!QFile::exists(exeFile)) {
         QMessageBox::warning(
             this,
-            "Error",
-            "File " + exeFile + " was not created!"
+            "Ошибка",
+            "Файл " + exeFile + " не был создан!"
             );
         return;
     }
@@ -219,7 +219,7 @@ void MainWindow::compileAndRun()
     QString command = QString(
                           "cd /d \"%1\" && "
                           "\"%2\" && "
-                          "echo Press Enter to close console... && "
+                          "echo Нажмите Enter чтобы закрыть консоль... && "
                           "pause > nul && "
                           "exit"
                           ).arg(folderPath, exeFile);
@@ -242,7 +242,6 @@ void MainWindow::compileAndRunWithTest() {
         return;
     }
 
-    // Сохраняем C++ файл
     QString cppFile = QFileDialog::getSaveFileName(
         this,
         "Сохранить C++ файл",
@@ -262,7 +261,6 @@ void MainWindow::compileAndRunWithTest() {
     out << code;
     file.close();
 
-    // Открываем тест
     QString testFile = QFileDialog::getOpenFileName(
         this,
         "Выберите файл теста",
@@ -290,7 +288,6 @@ void MainWindow::compileAndRunWithTest() {
 
     jsonFile.close();
 
-    // Проверка запрещённых конструкций
     for (const QString &keyword : forbiddenList) {
         if (!keyword.isEmpty() && code.contains(keyword, Qt::CaseInsensitive)) {
             QMessageBox::warning(this, "Ошибка", "Код содержит запрещённый элемент: " + keyword);
@@ -298,7 +295,6 @@ void MainWindow::compileAndRunWithTest() {
         }
     }
 
-    // Компиляция
     QFileInfo fileInfo(cppFile);
     QString folderPath = fileInfo.path();
     QString exeFile = fileInfo.dir().filePath(fileInfo.baseName() + ".exe");
@@ -317,10 +313,9 @@ void MainWindow::compileAndRunWithTest() {
         return;
     }
 
-    // Команда: записать вывод в файл И показать вывод пользователю
     QString outputFilePath = folderPath + "/output.txt";
     QString safeInput = testInput;
-    safeInput.replace("\"", "\"\""); // экранирование кавычек
+    safeInput.replace("\"", "\"\"");
 
     QString cmd = QString(
                       "cd /d \"%1\" && "
@@ -341,7 +336,6 @@ void MainWindow::compileAndRunWithTest() {
         SW_SHOW
         );
 
-    // Чтение вывода и проверка теста (с задержкой)
     QTimer::singleShot(500, this, [=]() mutable {
         QElapsedTimer timer;
         timer.start();

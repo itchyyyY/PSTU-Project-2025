@@ -15,7 +15,7 @@
 
 TestCreationDialog::TestCreationDialog(QWidget *parent)
     : QDialog(parent) {
-    setWindowTitle("Creating a test");
+    setWindowTitle("Создание теста");
     auto *layout = new QVBoxLayout(this);
 
     nameEdit = new QLineEdit(this);
@@ -24,25 +24,25 @@ TestCreationDialog::TestCreationDialog(QWidget *parent)
     inputEdit = new QTextEdit(this);
     expectedOutputEdit = new QTextEdit(this);
 
-    layout->addWidget(new QLabel("Test name:"));
+    layout->addWidget(new QLabel("Название теста:"));
     layout->addWidget(nameEdit);
 
-    layout->addWidget(new QLabel("Description:"));
+    layout->addWidget(new QLabel("Описание:"));
     layout->addWidget(descriptionEdit);
 
-    layout->addWidget(new QLabel("Forbidden constructs (comma-separated):"));
+    layout->addWidget(new QLabel("Запрещённые конструкции (через запятую):"));
     layout->addWidget(forbiddenEdit);
 
-    layout->addWidget(new QLabel("Input:"));
+    layout->addWidget(new QLabel("Входные данные:"));
     layout->addWidget(inputEdit);
 
-    layout->addWidget(new QLabel("Expected output:"));
+    layout->addWidget(new QLabel("Ожидаемый вывод:"));
     layout->addWidget(expectedOutputEdit);
 
     auto *buttonLayout = new QHBoxLayout();
 
-    auto *saveButton = new QPushButton("Save", this);
-    auto *cancelButton = new QPushButton("Cancel", this);
+    auto *saveButton = new QPushButton("Сохранить", this);
+    auto *cancelButton = new QPushButton("Отмена", this);
 
     buttonLayout->addWidget(saveButton);
     buttonLayout->addWidget(cancelButton);
@@ -53,6 +53,7 @@ TestCreationDialog::TestCreationDialog(QWidget *parent)
     connect(cancelButton, &QPushButton::clicked, this, &TestCreationDialog::reject);
 }
 
+
 TestCreationDialog::TestCreationDialog(const QString &filePath, QWidget *parent)
     : TestCreationDialog(parent) {
     loadTest(filePath);
@@ -61,7 +62,7 @@ TestCreationDialog::TestCreationDialog(const QString &filePath, QWidget *parent)
 void TestCreationDialog::loadTest(const QString &filePath) {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(this, "Error", "Cannot open test file.");
+        QMessageBox::critical(this, "Ошибка", "Не удалось открыть файл теста.");
         reject();
         return;
     }
@@ -70,7 +71,7 @@ void TestCreationDialog::loadTest(const QString &filePath) {
     file.close();
 
     if (!doc.isObject()) {
-        QMessageBox::critical(this, "Error", "Invalid test file format.");
+        QMessageBox::critical(this, "Ошибка", "Неверный формат файла теста.");
         reject();
         return;
     }
@@ -96,10 +97,11 @@ void TestCreationDialog::loadTest(const QString &filePath) {
     expectedOutputEdit->setText(expected);
 }
 
+
 void TestCreationDialog::saveTest() {
     QString name = nameEdit->text().trimmed();
     if (name.isEmpty()) {
-        QMessageBox::warning(this, "Validation error", "Test name cannot be empty.");
+        QMessageBox::warning(this, "Ошибка валидации", "Название теста не может быть пустым.");
         return;
     }
 
@@ -107,7 +109,6 @@ void TestCreationDialog::saveTest() {
     QString forbiddenText = forbiddenEdit->text();
     QStringList forbiddenList = forbiddenText.split(",", Qt::SkipEmptyParts);
 
-    // Trim whitespace for each forbidden construct
     for (QString &item : forbiddenList)
         item = item.trimmed();
 
@@ -135,13 +136,13 @@ void TestCreationDialog::saveTest() {
     QString filePath = dir.filePath(name + ".json");
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly)) {
-        QMessageBox::critical(this, "Error", "Cannot write test file.");
+        QMessageBox::critical(this, "Ошибка", "Не удалось записать файл теста.");
         return;
     }
 
     file.write(doc.toJson(QJsonDocument::Indented));
     file.close();
 
-    QMessageBox::information(this, "Saved", "Test saved successfully.");
+    QMessageBox::information(this, "Сохранено", "Тест успешно сохранён.");
     accept();
 }
