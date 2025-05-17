@@ -56,7 +56,7 @@ void CodeEditor::keyPressEvent(QKeyEvent *event) {
         return;
     }
 
-    if (event->key() == Qt::Key_Less) {
+    if (event->key() == Qt::Key_Less) { // <
         QTextCursor cursor = textCursor();
         QString textBeforeCursor = cursor.block().text().left(cursor.positionInBlock());
 
